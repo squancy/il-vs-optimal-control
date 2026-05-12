@@ -11,8 +11,8 @@ from models.merton import create_merton_model
 from policies.analytic import (
     JumpDiffusionPolicy,
     MertonPolicy,
-    TimeDependentJumpDiffusionPolicy,
-    TimeDependentMertonPolicy,
+    TrajectoryDependentJumpDiffusionPolicy,
+    TrajectoryDependentMertonPolicy,
 )
 from policies.base import Policy
 from policies.wrappers import MixturePolicy
@@ -38,6 +38,7 @@ class DAgger:
         bc_optimizer (str = "sgd"): Optimizer to use for BC.
         bc_epochs (int = 10): Number of epochs to use for BC.
         bc_batch_size (int = 32): Batch size to use for BC.
+        system_consts (SystemConsts): System level constants.
     """
 
     def __init__(
@@ -58,21 +59,21 @@ class DAgger:
         if expert_policy == "merton":
             self.financial_model = create_merton_model(policy_class=MertonPolicy)
             self.expert_policy = MertonPolicy(params=MertonConsts())
-        elif expert_policy == "time_dep_merton":
+        elif expert_policy == "traj_dep_merton":
             self.financial_model = create_merton_model(
-                policy_class=TimeDependentMertonPolicy
+                policy_class=TrajectoryDependentMertonPolicy
             )
-            self.expert_policy = TimeDependentMertonPolicy(params=MertonConsts())
+            self.expert_policy = TrajectoryDependentMertonPolicy(params=MertonConsts())
         elif expert_policy == "jump_diffusion":
             self.financial_model = create_jump_diffusion_model(
                 policy_class=JumpDiffusionPolicy
             )
             self.expert_policy = JumpDiffusionPolicy(params=JumpDiffusionConsts())
-        elif expert_policy == "time_dep_jump_diffusion":
+        elif expert_policy == "traj_dep_jump_diffusion":
             self.financial_model = create_jump_diffusion_model(
-                policy_class=TimeDependentJumpDiffusionPolicy
+                policy_class=TrajectoryDependentJumpDiffusionPolicy
             )
-            self.expert_policy = TimeDependentJumpDiffusionPolicy(
+            self.expert_policy = TrajectoryDependentJumpDiffusionPolicy(
                 params=JumpDiffusionConsts()
             )
         self.state_type = state_type

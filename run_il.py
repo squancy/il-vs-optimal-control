@@ -1,12 +1,13 @@
 from il.bc import BC
+from il.compare_rnn_vs_plugin import compare_rnn_to_plugin_policy
 from il.dagger import DAgger
 from models.jump_diffusion import create_jump_diffusion_model
 from models.merton import create_merton_model
 from policies.analytic import (
     JumpDiffusionPolicy,
     MertonPolicy,
-    TimeDependentJumpDiffusionPolicy,
-    TimeDependentMertonPolicy,
+    TrajectoryDependentJumpDiffusionPolicy,
+    TrajectoryDependentMertonPolicy,
 )
 from policies.learnable import LinearPolicy, NNPolicy, RNNPolicy
 
@@ -48,10 +49,10 @@ if __name__ == "__main__":
         savepath="plots/bc_vs_constant_merton_distr_shift.png",
     )
 
-    # Evaluate BC against a time-dependent Merton policy in a POMDP setting
+    # Evaluate BC against a trajectory-dependent Merton policy in a POMDP setting
     # States only contain returns and wealths, so BC has to infer the distribution
     # of the mean and volatility of returns
-    merton_model = create_merton_model(policy_class=TimeDependentMertonPolicy)
+    merton_model = create_merton_model(policy_class=TrajectoryDependentMertonPolicy)
     expert_dataset = merton_model.generate_data(m=100, state_type="pomdp")
     bc = BC(D=expert_dataset, policy=NNPolicy(in_dim=1), epochs=10)
     bc.train()
@@ -65,9 +66,9 @@ if __name__ == "__main__":
         state_type="pomdp",
     )
 
-    # Evaluate BC against a time-dependent merton policy but the states now
+    # Evaluate BC against a trajectory-dependent merton policy but the states now
     # contain the actual mean and volatility for each trajectory
-    merton_model = create_merton_model(policy_class=TimeDependentMertonPolicy)
+    merton_model = create_merton_model(policy_class=TrajectoryDependentMertonPolicy)
     expert_dataset = merton_model.generate_data(m=100, state_type="full")
     bc = BC(D=expert_dataset, policy=NNPolicy(in_dim=3), epochs=10)
     bc.train()
@@ -80,17 +81,17 @@ if __name__ == "__main__":
         n_action_time_trajectories=3,
     )
 
-    # Evaluate DAgger against a time-dependent Merton policy using 1-year
+    # Evaluate DAgger against a trajectory-dependent Merton policy using 1-year
     # trajectories in a POMDP setting
     dagger = DAgger(
-        expert_policy="time_dep_merton", policy=NNPolicy(in_dim=1), state_type="pomdp"
+        expert_policy="traj_dep_merton", policy=NNPolicy(in_dim=1), state_type="pomdp"
     )
     dagger.train()
-    merton_model = create_merton_model(policy_class=TimeDependentMertonPolicy)
+    merton_model = create_merton_model(policy_class=TrajectoryDependentMertonPolicy)
     dagger.bc.compare_to_financial_model(
         financial_model=merton_model,
         m=10,
-        savepath="plots/dagger_vs_time_dep_merton_1year.png",
+        savepath="plots/dagger_vs_traj_dep_merton_1year.png",
         dpi=600,
         plots_to_show="action_time",
         is_bc=False,
@@ -98,14 +99,15 @@ if __name__ == "__main__":
         state_type="pomdp",
     )
 
-    # Evaluate behavior cloning using the time-dependent Merton model
+    """
+    # Evaluate behavior cloning using the trajectory-dependent Merton model
     # Using longer trajectories (15-20 years of trading or more) significantly
     # improves the performance
     # Now, states also contain the empirical mean and variance of the returns up
     # to time t
     # NOTE: change T in consts to 15-20 and uncomment the code below
     """
-    merton_model = create_merton_model(policy_class=TimeDependentMertonPolicy)
+    merton_model = create_merton_model(policy_class=TrajectoryDependentMertonPolicy)
     expert_dataset = merton_model.generate_data(m=100, state_type="statistic")
     bc = BC(D=expert_dataset, policy=NNPolicy(in_dim=3), epochs=10)
     bc.train()
@@ -118,6 +120,8 @@ if __name__ == "__main__":
         state_type="statistic",
         n_action_time_trajectories=3,
     )
+    """
+
     """
     jd_model = create_jump_diffusion_model(policy_class=JumpDiffusionPolicy)
     expert_dataset = jd_model.generate_data(m=100)
@@ -139,7 +143,9 @@ if __name__ == "__main__":
         plots_to_show=["action_time", "rollout_drift"],
     )
 
-    model = create_jump_diffusion_model(policy_class=TimeDependentJumpDiffusionPolicy)
+    model = create_jump_diffusion_model(
+        policy_class=TrajectoryDependentJumpDiffusionPolicy
+    )
 
     policy = RNNPolicy(input_dim=1, hidden_dim=128, probabilistic=True)
     D = model.generate_trajectories(m=5000, state_type="pomdp")
@@ -155,10 +161,12 @@ if __name__ == "__main__":
     bc.train()
     bc.diagnose_rnn(financial_model=model, savepath="plots/bc_vs_jd_rnn.png", dpi=600)
 
-    model = create_jump_diffusion_model(policy_class=TimeDependentJumpDiffusionPolicy)
+    model = create_jump_diffusion_model(
+        policy_class=TrajectoryDependentJumpDiffusionPolicy
+    )
     policy = RNNPolicy(input_dim=1, hidden_dim=128, probabilistic=True)
     dagger = DAgger(
-        expert_policy="time_dep_jump_diffusion",
+        expert_policy="traj_dep_jump_diffusion",
         policy=policy,
         traj_dataset=True,
         state_type="pomdp",
@@ -173,28 +181,39 @@ if __name__ == "__main__":
         financial_model=model, savepath="plots/dagger_vs_jd_rnn.png", dpi=600
     )
 
-    model = create_merton_model(policy_class=TimeDependentMertonPolicy)
+    model = create_merton_model(policy_class=TrajectoryDependentMertonPolicy)
 
-    policy = RNNPolicy(input_dim=1, hidden_dim=128, probabilistic=True)
+    policy = RNNPolicy(input_dim=1, hidden_dim=192, probabilistic=True)
     D = model.generate_trajectories(m=5000, state_type="pomdp")
     bc = BC(
         D=D,
         policy=policy,
         lr=1e-3,
         epochs=10,
-        batch_size=16,
+        batch_size=32,
         traj_dataset=True,
         optimizer="adam",
     )
     bc.train()
     bc.diagnose_rnn(
-        financial_model=model, savepath="plots/bc_vs_merton_rnn.png", dpi=600
+        financial_model=model,
+        savepath="plots/bc_vs_merton_rnn.png",
+        dpi=600,
+        state_type="pomdp",
     )
 
-    model = create_merton_model(policy_class=TimeDependentMertonPolicy)
+    compare_rnn_to_plugin_policy(
+        rnn_policy=bc.policy,
+        financial_model=model,
+        m=500,
+        state_type="pomdp",
+        savepath="plots/bc_vs_naive.png",
+    )
+
+    model = create_merton_model(policy_class=TrajectoryDependentMertonPolicy)
     policy = RNNPolicy(input_dim=1, hidden_dim=128, probabilistic=True)
     dagger = DAgger(
-        expert_policy="time_dep_merton",
+        expert_policy="traj_dep_merton",
         policy=policy,
         traj_dataset=True,
         state_type="pomdp",

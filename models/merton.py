@@ -6,8 +6,8 @@ import torch
 
 from models.base import FinancialModel
 from policies.analytic import (
-    TimeDependentMertonPolicy,
-    TimeDependentNoisyMertonPolicy,
+    TrajectoryDependentMertonPolicy,
+    TrajectoryDependentNoisyMertonPolicy,
 )
 from policies.base import Policy
 from policies.wrappers import MixturePolicy
@@ -16,22 +16,21 @@ from utils.consts import MertonConsts
 
 class MertonModel(FinancialModel):
     """
-    Implements the Merton AP model and trajectory generation according
-    to the model.
+    Implements the Merton AP model and trajectory generation.
 
     Attributes:
         params (MertonConsts): Dataclass of constants for the Merton AP model.
         policy_class (Policy): Optimal policy class for the Merton AP model.
-        time_dep (bool): True, if the Merton policy is time-dependent.
+        traj_dep (bool): True, if the Merton policy is trajectory-dependent.
     """
 
     def __init__(self, params: MertonConsts, policy_class: Type[Policy]) -> None:
         super().__init__()
         self.params = params
         self.expert_policy = policy_class(params=params)
-        self.time_dep = isinstance(
+        self.traj_dep = isinstance(
             self.expert_policy,
-            (TimeDependentMertonPolicy, TimeDependentNoisyMertonPolicy),
+            (TrajectoryDependentMertonPolicy, TrajectoryDependentNoisyMertonPolicy),
         )
 
     def simulate_trajectory(
@@ -39,7 +38,7 @@ class MertonModel(FinancialModel):
     ) -> list[tuple]:
         """
         Generates trajectories given an arbitrary policy.
-        In case of a time-dependent Merton model, the mean and variance of the
+        In case of a trajectory-dependent Merton model, the mean and variance of the
         risky asset for each trajectory are generated from a normal and
         lognormal distribution, respectively. Otherwise, they are assumed to be constant.
 
@@ -49,10 +48,9 @@ class MertonModel(FinancialModel):
             state_type (str = "default"): Determines what the states should be.
 
         Returns:
-            list[tuple]: A single simulated trajectory. Each element in
-                the trajectory is a tuple of the given state, the policy's
-                value at that state, the current wealth and the expert policy's
-                value at that state.
+            list[tuple]: A single simulated trajectory. Each state in
+                the trajectory might contain different information,
+                depending on `state_type`.
         """
         rng = np.random.default_rng(seed=seed)
         X = torch.as_tensor(self.params.init_wealth, dtype=torch.float32)
@@ -61,7 +59,7 @@ class MertonModel(FinancialModel):
         R_prev = 0
         trajectory = []
 
-        if self.time_dep:
+        if self.traj_dep:
             mu = self.params.mu + self.params.distr_var * rng.standard_normal()
             sigma = rng.lognormal(
                 mean=math.log(self.params.sigma), sigma=self.params.distr_var
@@ -71,7 +69,9 @@ class MertonModel(FinancialModel):
             sigma = self.params.sigma
 
         for t in range(N):
+            # default state
             state = torch.as_tensor([t / N, R_prev, torch.log(X).item()])
+
             if state_type == "statistic":
                 state = torch.as_tensor(
                     [
@@ -86,16 +86,17 @@ class MertonModel(FinancialModel):
             elif state_type == "pomdp":
                 state = torch.as_tensor([R_prev], dtype=torch.float32)
 
-            if self.time_dep and isinstance(policy, MixturePolicy):
+            if self.traj_dep and isinstance(policy, MixturePolicy):
                 pi = policy(state=state, mu=mu, sigma=sigma)
-            elif self.time_dep and isinstance(
-                policy, (TimeDependentMertonPolicy, TimeDependentNoisyMertonPolicy)
+            elif self.traj_dep and isinstance(
+                policy,
+                (TrajectoryDependentMertonPolicy, TrajectoryDependentNoisyMertonPolicy),
             ):
                 pi = policy(mu, sigma)
             else:
                 pi = policy(state)
 
-            if self.time_dep:
+            if self.traj_dep:
                 pi_star = self.expert_policy(mu, sigma)
             else:
                 pi_star = self.expert_policy(state)

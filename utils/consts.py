@@ -49,7 +49,6 @@ class MertonConsts(GeneralConsts):
         r (float): Risk-free rate (annualized).
         sigma (float): Risky asset volatility (annualized).
         gamma (float): Risk aversion.
-        A (float): Hyperparameter for determining time dependent risky return.
         distr_var (float): Variance of the distribution that generates per-trajectory
             mean and variance for the risky asset.
     """
@@ -58,7 +57,6 @@ class MertonConsts(GeneralConsts):
     r: float = 0.02
     sigma: float = 0.2
     gamma: float = 5
-    A: float = 0.08
     distr_var: float = 0.1
 
 

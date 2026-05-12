@@ -1,9 +1,9 @@
 from policies.analytic import (
     JumpDiffusionPolicy,
     MertonPolicy,
-    TimeDependentJumpDiffusionPolicy,
-    TimeDependentMertonPolicy,
-    TimeDependentNoisyMertonPolicy,
+    TrajectoryDependentJumpDiffusionPolicy,
+    TrajectoryDependentMertonPolicy,
+    TrajectoryDependentNoisyMertonPolicy,
 )
 from policies.base import Policy
 from policies.learnable import LinearPolicy, NNPolicy, RNNPolicy
@@ -18,7 +18,7 @@ __all__ = [
     "NormalizedPolicy",
     "Policy",
     "RNNPolicy",
-    "TimeDependentJumpDiffusionPolicy",
-    "TimeDependentMertonPolicy",
-    "TimeDependentNoisyMertonPolicy",
+    "TrajectoryDependentJumpDiffusionPolicy",
+    "TrajectoryDependentMertonPolicy",
+    "TrajectoryDependentNoisyMertonPolicy",
 ]

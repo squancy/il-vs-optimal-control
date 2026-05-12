@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
@@ -8,8 +7,7 @@ import torch.optim as optim
 from torch.distributions import Normal
 
 from models.merton import create_merton_model
-from plotting.utils import plot_kde
-from policies.analytic import TimeDependentMertonPolicy
+from policies.analytic import TrajectoryDependentMertonPolicy
 from policies.base import Policy
 from policies.learnable import NNPolicy
 from policies.wrappers import NormalizedPolicy
@@ -272,7 +270,7 @@ class RolloutBuffer:
 
 class PPO:
     """
-    PPO trainer for the time-dependent Merton portfolio allocation problem.
+    PPO trainer for the trajectory-dependent Merton portfolio allocation problem.
 
     Attributes:
         config (PPOConfig): Config variables.
@@ -288,7 +286,7 @@ class PPO:
         policy_losses (list[float] = []): List of PPO policy losses.
         value_losses (list[float] = []): List of value losses.
         entropy_values (list[float] = []): List of entropies.
-        fin_model (MertonModel): Time-dependent merton model.
+        fin_model (MertonModel): trajectory-dependent merton model.
     """
 
     def __init__(self, config: PPOConfig | None = None) -> None:
@@ -332,7 +330,9 @@ class PPO:
         self.entropy_values: list[float] = []
 
         # Financial model for evaluation
-        self.fin_model = create_merton_model(policy_class=TimeDependentMertonPolicy)
+        self.fin_model = create_merton_model(
+            policy_class=TrajectoryDependentMertonPolicy
+        )
 
     def load_pretrained_actor(
         self,
@@ -531,7 +531,7 @@ class PPO:
         Evaluate the current policy over fresh episodes.
 
         Returns:
-            tuple[float, float]: tuple of mean_utility and mean_terminal_wealth.
+            tuple[float, float]: Tuple of mean utility and mean terminal wealth.
         """
         c = self.config
         eval_env = MertonEnv(
@@ -597,134 +597,3 @@ class PPO:
                 mean=torch.zeros(self.env.state_dim),
                 std=torch.ones(self.env.state_dim),
             )
-
-    def plot_results(
-        self,
-        include_expert: bool = True,
-        savepath: str | None = None,
-        dpi: int = 300,
-    ) -> None:
-        """
-        Plot PPO training curves and comparison to expert.
-
-        Shows:
-          1. Expected utility over training (y-axis clipped to readable range)
-          2. Mean terminal wealth over training
-          3. Terminal wealth distribution (KDE, PPO vs Expert)
-
-        Args:
-            include_expert (bool = True): True, if the expert policy should be included
-                in the plots.
-            savepath (str | None = None): Path to save the plot.
-            dpi (int = 300): DPI resolution of the plot.
-        """
-
-        fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
-
-        expert_util = None
-        if include_expert:
-            expert_util = self.fin_model.evaluate(
-                policy=self.fin_model.expert_policy,
-                m=self.config.eval_episodes,
-                expert=True,
-                state_type=self.config.state_type,
-            )
-
-        # 1) Expected utility over training
-        ax = axes[0]
-        ax.plot(
-            self.eval_steps,
-            self.eval_utilities,
-            color="#0984e3",
-            lw=2,
-            label="PPO",
-        )
-        if expert_util is not None:
-            ax.axhline(
-                expert_util,
-                color="#2d3436",
-                linestyle="--",
-                lw=1.5,
-                label=f"Expert ({expert_util:.4f})",
-            )
-            # Symlog y-axis: linear near zero, log-compressed for extremes
-            linthresh = max(1.0, abs(expert_util) * 20)
-            ax.set_yscale("symlog", linthresh=linthresh)
-            finite_utils = [u for u in self.eval_utilities if np.isfinite(u)]
-            if finite_utils:
-                y_bottom = min(finite_utils) * 1.5
-            else:
-                y_bottom = expert_util * 100
-            y_top = abs(expert_util) * 2 if expert_util < 0 else expert_util * 1.5
-            ax.set_ylim(bottom=y_bottom, top=y_top)
-        ax.set_xlabel("Environment steps")
-        ax.set_ylabel("Expected utility")
-        ax.set_title("PPO Learning Curve")
-        ax.legend(fontsize=8)
-        ax.grid(True, linestyle=":", alpha=0.5)
-
-        # 2) Median terminal wealth over training
-        ax = axes[1]
-        ax.plot(
-            self.eval_steps,
-            self.eval_mean_wealth,
-            color="#0984e3",
-            lw=2,
-            label="PPO",
-        )
-        if include_expert:
-            X_expert = self.fin_model.terminal_wealths(
-                policy=self.fin_model.expert_policy,
-                m=self.config.eval_episodes,
-                expert=True,
-                state_type=self.config.state_type,
-            )
-            ax.axhline(
-                np.median(X_expert),
-                color="#2d3436",
-                linestyle="--",
-                lw=1.5,
-                label=f"Expert ({np.median(X_expert):.2f})",
-            )
-        ax.set_xlabel("Environment steps")
-        ax.set_ylabel("Median")
-        ax.set_title("Median Terminal Wealth")
-        ax.legend(fontsize=8)
-        ax.grid(True, linestyle=":", alpha=0.5)
-
-        # 3) Terminal wealth distribution (KDE)
-        ax = axes[2]
-        eval_policy = self.get_eval_policy()
-        X_ppo = self.fin_model.terminal_wealths(
-            policy=eval_policy,
-            m=self.config.eval_episodes,
-            state_type=self.config.state_type,
-        )
-        X_ppo = X_ppo[np.isfinite(X_ppo)]
-        all_wealth = np.concatenate(
-            [X_expert[np.isfinite(X_expert)], X_ppo] if include_expert else [X_ppo]
-        )
-        lo, hi = np.percentile(all_wealth, [1, 95])
-        pad = 0.05 * (hi - lo)
-        xlim = (max(0, lo - pad), hi + pad)
-        if include_expert:
-            plot_kde(
-                ax,
-                X_expert[np.isfinite(X_expert)],
-                color="#2d3436",
-                label="Expert",
-                xlim=xlim,
-            )
-        plot_kde(ax, X_ppo, color="#0984e3", label="PPO", linestyle="--", xlim=xlim)
-        ax.set_xlim(xlim)
-        ax.set_xlabel("Terminal wealth")
-        ax.set_ylabel("Density")
-        ax.set_title("Terminal Wealth Distribution")
-        ax.legend(fontsize=8)
-        ax.grid(True, linestyle=":", alpha=0.5)
-
-        fig.tight_layout()
-        if savepath:
-            fig.savefig(savepath, dpi=dpi, bbox_inches="tight")
-        plt.show()
-        plt.close(fig)

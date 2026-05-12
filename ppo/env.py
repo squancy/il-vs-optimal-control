@@ -8,10 +8,10 @@ from utils.consts import MertonConsts
 
 class MertonEnv:
     """
-    Gym-like wrapper around the time-dependent Merton model.
+    Gym-like wrapper around the trajectory-dependent Merton model.
 
     Each episode is one trajectory of N = T / delta_t steps.
-    The agent chooses a portfolio weight pi at each step;
+    The agent chooses a portfolio weight pi at each step and
     the environment returns the next state and a scalar reward.
 
     Attributes:
@@ -73,7 +73,7 @@ class MertonEnv:
         if seed is not None:
             self.rng = np.random.default_rng(seed=seed)
 
-        # Sample per-trajectory mu, sigma (time-dependent Merton)
+        # Sample per-trajectory mu, sigma (trajectory-dependent Merton)
         self.mu = self.params.mu + self.params.distr_var * self.rng.standard_normal()
         self.sigma = self.rng.lognormal(
             mean=math.log(self.params.sigma), sigma=self.params.distr_var
@@ -116,8 +116,7 @@ class MertonEnv:
         # Reward
         G = X_new / X_old  # Gross portfolio return
         if self.reward_type == "crra":
-            # Per-step CRRA reward: r_t = (G^(1-γ) - 1) / (1-γ)
-            # Myopic optimal action matches full-horizon Merton π*
+            # Per-step CRRA reward
             gamma = self.params.gamma
             reward = (G ** (1 - gamma) - 1) / (1 - gamma)
         elif self.reward_type == "log_wealth":
@@ -155,6 +154,11 @@ class MertonEnv:
             return torch.tensor(
                 [self.t / self.N, self.mu, self.sigma], dtype=torch.float32
             )
+        elif self.state_type == "statistic":
+            return torch.tensor(
+                [self.t / self.N, np.mean(self.returns), np.std(self.returns)],
+                dtype=torch.float32,
+            )
         else:  # default
             return torch.tensor(
                 [self.t / self.N, self.R_prev, math.log(max(self.X, 1e-8))],
@@ -183,7 +187,7 @@ class MertonEnv:
 class VectorizedMertonEnv:
     """
     Runs multiple MertonEnv instances in parallel (synchronous).
-    All environments step together — when one finishes, it auto-resets.
+    All environments step together. When one finishes, it auto-resets.
 
     Attributes:
         n_envs (int): Number of parallel environments.
@@ -236,7 +240,7 @@ class VectorizedMertonEnv:
 
         Returns:
             tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-                (next_states, rewards, dones) — each of shape (n_envs,) or (n_envs, dim).
+                (next_states, rewards, dones), each of shape (n_envs,) or (n_envs, dim).
         """
         next_states = []
         rewards = []

@@ -11,7 +11,7 @@ class NormalizedPolicy(Policy):
     Attributes:
         policy (Policy): The policy to use.
         mean (torch.Tensor): Mean vector of the input data.
-        std (torch.Tensor): Variance of the input data.
+        std (torch.Tensor): Standard deviation of the input data.
     """
 
     def __init__(self, policy: Policy, mean: torch.Tensor, std: torch.Tensor) -> None:
@@ -36,15 +36,14 @@ class NormalizedPolicy(Policy):
 
 class MixturePolicy(Policy):
     """
-    Implements the convex combination of two policies.
+    Implements the mixture of two policies.
     Returns the first policy with probability threshold.
 
     Attributes:
         policy1 (Policy): First policy.
         policy2 (Policy): Second policy.
-        threshold (float): Convex combination coefficient.
+        threshold (float): Probability of using the first policy.
         rng (np.random.Generator | None): RNG for reproducible sampling.
-        time_dep (bool): Whether policies expect (mu, sigma) instead of state.
     """
 
     def __init__(

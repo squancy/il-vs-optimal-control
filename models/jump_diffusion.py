@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 from models.base import FinancialModel
-from policies.analytic import TimeDependentJumpDiffusionPolicy
+from policies.analytic import TrajectoryDependentJumpDiffusionPolicy
 from policies.base import Policy
 from policies.wrappers import MixturePolicy
 from utils.consts import JumpDiffusionConsts
@@ -19,21 +19,23 @@ class JumpDiffusionModel(FinancialModel):
     Attributes:
         params (JumpDiffusionConsts): Dataclass of constants for the Jump Diffusion AP model.
         policy_class (Policy): Optimal policy class for the Jump Diffusion AP model.
-        time_dep (bool): True, if the Jump Diffusion policy is time-dependent.
+        traj_dep (bool): True, if the Jump Diffusion policy is trajectory-dependent.
     """
 
     def __init__(self, params: JumpDiffusionConsts, policy_class: Type[Policy]) -> None:
         super().__init__()
         self.params = params
         self.expert_policy = policy_class(params=params)
-        self.time_dep = isinstance(self.expert_policy, TimeDependentJumpDiffusionPolicy)
+        self.traj_dep = isinstance(
+            self.expert_policy, TrajectoryDependentJumpDiffusionPolicy
+        )
 
     def simulate_trajectory(
         self, policy: Policy, seed: int = 42, state_type: str = "default"
     ) -> list[tuple]:
         """
         Generates trajectories given an arbitrary policy.
-        In case of a time-dependent Jump Diffusion model, the mean and variance
+        In case of a trajectory-dependent Jump Diffusion model, the mean and variance
         of the risky asset for each trajectory are generated from a normal and
         lognormal distribution, respectively. Otherwise, they are assumed to be constant.
 
@@ -43,10 +45,9 @@ class JumpDiffusionModel(FinancialModel):
             state_type (str = "default"): Determines what the states should be.
 
         Returns:
-            list[tuple]: A single simulated trajectory. Each element in
-                the trajectory is a tuple of the given state, the policy's
-                value at that state, the current wealth and the expert policy's
-                value at that state.
+            list[tuple]: A single simulated trajectory. Each state in
+                the trajectory might contain different information,
+                depending on `state_type`.
         """
         rng = np.random.default_rng(seed=seed)
         X = torch.as_tensor(self.params.init_wealth, dtype=torch.float32)
@@ -54,7 +55,7 @@ class JumpDiffusionModel(FinancialModel):
         trajectory = []
         R = 0
 
-        if self.time_dep:
+        if self.traj_dep:
             mu = self.params.mu + self.params.distr_var * rng.standard_normal()
             sigma = rng.lognormal(
                 mean=math.log(self.params.sigma), sigma=self.params.distr_var
@@ -63,7 +64,6 @@ class JumpDiffusionModel(FinancialModel):
             mu = self.params.mu
             sigma = self.params.sigma
 
-        # --- Drift correction ---
         k = np.exp(self.params.mu_J + 0.5 * self.params.sigma_J**2) - 1.0
         mu_eff = mu - self.params.lam * k
 
@@ -76,7 +76,6 @@ class JumpDiffusionModel(FinancialModel):
             elif state_type == "pomdp":
                 state = torch.as_tensor([R], dtype=torch.float32)
 
-            # --- Jumps ---
             J_t = rng.poisson(self.params.lam * self.params.delta_t)
             if J_t > 0:
                 log_jump = (
@@ -88,20 +87,20 @@ class JumpDiffusionModel(FinancialModel):
 
             jump = np.exp(log_jump)
 
-            # --- Policy ---
-            if self.time_dep and isinstance(policy, MixturePolicy):
+            if self.traj_dep and isinstance(policy, MixturePolicy):
                 pi = policy(state=state, mu=mu, sigma=sigma)
-            elif self.time_dep and isinstance(policy, TimeDependentJumpDiffusionPolicy):
+            elif self.traj_dep and isinstance(
+                policy, TrajectoryDependentJumpDiffusionPolicy
+            ):
                 pi = policy(mu, sigma)
             else:
                 pi = policy(state)
 
-            if self.time_dep:
+            if self.traj_dep:
                 pi_star = self.expert_policy(mu, sigma)
             else:
                 pi_star = self.expert_policy(state)
 
-            # --- Diffusion ---
             epsilon = rng.standard_normal()
 
             R_diffuse = (
@@ -112,7 +111,6 @@ class JumpDiffusionModel(FinancialModel):
 
             R = R_diffuse * jump - 1
 
-            # --- Wealth update ---
             X_new = X * (
                 1
                 + self.params.r * self.params.delta_t

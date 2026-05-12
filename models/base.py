@@ -110,7 +110,7 @@ class FinancialModel(ABC):
         state_type: str = "default",
     ) -> np.float32:
         """
-        Evaluates a given policy by calculating the expected utility.
+        Evaluates a given policy by calculating the expected utility (CRRA).
 
         Args:
             policy (Policy): Policy to evaluate.
@@ -119,7 +119,7 @@ class FinancialModel(ABC):
             state_type (str = "default"): Determines what the states should be.
 
         Returns:
-            float: average final wealth achieved by the policy across
+            np.float32: Average terminal wealth achieved by the policy.
         """
         utilities = []
         base_seed = self.test_base_seed_expert if expert else self.test_base_seed_policy
@@ -151,7 +151,7 @@ class FinancialModel(ABC):
             state_type (str = "default"): Determines what the states should be.
 
         Returns:
-            np.array: Array of terminal wealths simulated using the policy.
+            NDArray[np.float32]: Array of terminal wealths simulated using the policy.
         """
         X_T = []
         base_seed = (
@@ -174,6 +174,9 @@ class FinancialModel(ABC):
         Args:
             traj (list[tuple]): List of recorded information in a simulated trajectory,
                 containing the expert and learner policies.
+
+        Returns:
+            NDArray[np.float32]: List of policy differences along the given trajectory.
         """
         errors = []
         for el in traj:

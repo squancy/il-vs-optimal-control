@@ -1,6 +1,6 @@
 from il.bc import BC
 from models.merton import create_merton_model
-from policies.analytic import TimeDependentMertonPolicy
+from policies.analytic import TrajectoryDependentMertonPolicy
 from policies.learnable import NNPolicy
 from ppo.compare import compare_ppo_vs_il_ppo
 from utils.consts import PPOConfig
@@ -9,17 +9,19 @@ if __name__ == "__main__":
     config = PPOConfig(
         total_timesteps=500_000,
         n_envs=16,
-        rollout_steps=1250,
+        rollout_steps=5000,
         eval_interval=20_000,
-        state_type="default",
+        state_type="statistic",
     )
+
+    # Change trajectory length (T) to 20 years
 
     # 1) Train BC to get a pre-trained policy
     print("=" * 60)
     print("Phase 1: Pre-training with Behavior Cloning")
     print("=" * 60)
-    fin_model = create_merton_model(policy_class=TimeDependentMertonPolicy)
-    trajectories = fin_model.generate_data(m=100, state_type="default")
+    fin_model = create_merton_model(policy_class=TrajectoryDependentMertonPolicy)
+    trajectories = fin_model.generate_data(m=100, state_type="statistic")
     il_policy = NNPolicy(in_dim=3, pi_scale=20.0)
     bc = BC(
         D=trajectories,

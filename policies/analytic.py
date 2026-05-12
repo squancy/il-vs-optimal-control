@@ -31,9 +31,9 @@ class MertonPolicy(Policy):
         )
 
 
-class TimeDependentMertonPolicy(MertonPolicy):
+class TrajectoryDependentMertonPolicy(MertonPolicy):
     """
-    Implements the optimal policy for the Merton AP model with time dependent risky asset return.
+    Implements the optimal policy for the Merton AP model with trajectory dependent risky asset return.
 
     Attributes:
         params (MertonConsts): Dataclass of constants for the Merton AP model.
@@ -44,14 +44,14 @@ class TimeDependentMertonPolicy(MertonPolicy):
 
     def forward(self, mu: float, sigma: float) -> torch.Tensor:
         """
-        Computes the optimal policy for the time-dependent Merton AP model.
+        Computes the optimal policy for the trajectory-dependent Merton AP model.
 
         Args:
             mu (float): Expected return of the risky asset for the given trajectory.
             sigma (float): Volatility of the return of the risky asset for the trajectory.
 
         Returns:
-            torch.Tensor: Optimal policy for the Merton model at time step t.
+            torch.Tensor: Optimal policy for the Merton model during the kth trajectory.
         """
         return torch.as_tensor(
             (mu - self.params.r) / (self.params.gamma * sigma**2),
@@ -59,9 +59,9 @@ class TimeDependentMertonPolicy(MertonPolicy):
         )
 
 
-class TimeDependentNoisyMertonPolicy(MertonPolicy):
+class TrajectoryDependentNoisyMertonPolicy(MertonPolicy):
     """
-    Implements the optimal policy for the Merton AP model with time dependent risky asset return
+    Implements the optimal policy for the Merton AP model with trajectory dependent risky asset return
     and randomly added noise.
 
     Attributes:
@@ -78,14 +78,14 @@ class TimeDependentNoisyMertonPolicy(MertonPolicy):
 
     def forward(self, mu: float, sigma: float) -> torch.Tensor:
         """
-        Computes the optimal policy for the time-dependent Merton AP model.
+        Computes the optimal policy for the trajectory-dependent Merton AP model.
 
         Args:
             mu (float): Expected return of the risky asset for the given trajectory.
             sigma (float): Volatility of the return of the risky asset for the trajectory.
 
         Returns:
-            torch.Tensor: Optimal policy for the Merton model at time step t.
+            torch.Tensor: Optimal policy for the Merton model during the kth trajectory.
         """
         return torch.as_tensor(
             (mu - self.params.r) / (self.params.gamma * sigma**2)
@@ -107,12 +107,11 @@ class JumpDiffusionPolicy(Policy):
         self.params = params
 
     def forward(self, *args, **kwargs) -> torch.Tensor:
-        # E[J-1] and E[(J-1)^2] for lognormal jumps
         k = np.exp(self.params.mu_J + 0.5 * self.params.sigma_J**2) - 1
         Var_J = (np.exp(self.params.sigma_J**2) - 1) * np.exp(
             2 * self.params.mu_J + self.params.sigma_J**2
         )
-        E_J_minus_1_sq = Var_J + k**2  # E[(J-1)^2]
+        E_J_minus_1_sq = Var_J + k**2
 
         # Linearized optimal allocation (second-order approximation of HJB FOC)
         pi_star = (self.params.mu - self.params.r) / (
@@ -122,10 +121,10 @@ class JumpDiffusionPolicy(Policy):
         return torch.as_tensor(pi_star, dtype=torch.float32)
 
 
-class TimeDependentJumpDiffusionPolicy(JumpDiffusionPolicy):
+class TrajectoryDependentJumpDiffusionPolicy(JumpDiffusionPolicy):
     """
     Implements the optimal policy for the Jump Diffusion model with
-    per-trajectory μ and σ (sampled from distributions).
+    per-trajectory mean and variance (sampled from distributions).
 
     Attributes:
         params (JumpDiffusionConsts): Parameters of the Jump Diffusion model.
@@ -136,23 +135,22 @@ class TimeDependentJumpDiffusionPolicy(JumpDiffusionPolicy):
 
     def forward(self, mu: float, sigma: float) -> torch.Tensor:
         """
-        Computes the optimal policy for the time-dependent Jump Diffusion model.
+        Computes the optimal policy for the trajectory dependent Jump Diffusion model.
 
         Args:
             mu (float): Expected return of the risky asset for the given trajectory.
             sigma (float): Volatility of the return of the risky asset for the trajectory.
 
         Returns:
-            torch.Tensor: Optimal policy for the Jump Diffusion model.
+            torch.Tensor: Optimal policy for the Jump Diffusion model during the kth trajectory.
         """
-        # E[J-1] and E[(J-1)^2] for lognormal jumps
         k = np.exp(self.params.mu_J + 0.5 * self.params.sigma_J**2) - 1
         Var_J = (np.exp(self.params.sigma_J**2) - 1) * np.exp(
             2 * self.params.mu_J + self.params.sigma_J**2
         )
-        E_J_minus_1_sq = Var_J + k**2  # E[(J-1)^2]
+        E_J_minus_1_sq = Var_J + k**2
 
-        # Linearized optimal allocation using per-trajectory μ and σ
+        # Linearized optimal allocation using per-trajectory mean and variance
         pi_star = (mu - self.params.r) / (
             self.params.gamma * (sigma**2 + self.params.lam * E_J_minus_1_sq)
         )

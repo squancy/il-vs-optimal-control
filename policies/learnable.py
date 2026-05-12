@@ -37,7 +37,7 @@ class NNPolicy(Policy):
 
     Attributes:
         net (nn.Sequential): 2-layer NN with a 64-dim hidden layer.
-        pi_scale (float = 10.0): Scale parameter for the output.
+        pi_scale (float = 20.0): Scale parameter for the output.
     """
 
     def __init__(self, in_dim: int, pi_scale: float = 20.0) -> None:
@@ -51,7 +51,16 @@ class NNPolicy(Policy):
         )
         self.pi_scale = pi_scale
 
-    def forward(self, state) -> torch.Tensor:
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
+        """
+        Does a single pass of forward propagation.
+
+        Args:
+            state (torch.Tensor): Input state.
+
+        Returns:
+            nn.Tensor: Result after forward propagating the input state.
+        """
         return self.pi_scale * torch.tanh(self.net(state))
 
 
@@ -61,7 +70,8 @@ class RNNPolicy(Policy):
 
     Attributes:
         probabilistic (bool = False): True, if the output should be
-            2-dimensional.
+            2-dimensional (in this case, we are predicting the mean and variance
+            of a distribution).
         rnn (GRU): GRU unit.
         head (Sequential): Two layer feed-forward network for predicting
             a single quantity.
@@ -104,6 +114,23 @@ class RNNPolicy(Policy):
             )
 
         self.action_scale = action_scale
+
+    def get_initial_hidden(
+        self, batch_size: int = 1, device: torch.device | None = None
+    ) -> torch.Tensor:
+        """
+        Returns an initial hidden state for the GRU.
+
+        Args:
+            batch_size (int): The batch size for the hidden state.
+            device (torch.device | None): The device to place the tensor on.
+
+        Returns:
+            torch.Tensor: A tensor of zeros for the initial hidden state.
+        """
+        return torch.zeros(
+            self.rnn.num_layers, batch_size, self.rnn.hidden_size, device=device
+        )
 
     def forward(self, x: torch.Tensor, h0: torch.Tensor | None = None) -> torch.Tensor:
         """

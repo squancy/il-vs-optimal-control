@@ -16,9 +16,9 @@ from plotting.plots import Plots
 from policies.analytic import (
     JumpDiffusionPolicy,
     MertonPolicy,
-    TimeDependentJumpDiffusionPolicy,
-    TimeDependentMertonPolicy,
-    TimeDependentNoisyMertonPolicy,
+    TrajectoryDependentJumpDiffusionPolicy,
+    TrajectoryDependentMertonPolicy,
+    TrajectoryDependentNoisyMertonPolicy,
 )
 from policies.base import Policy
 from policies.wrappers import NormalizedPolicy
@@ -33,8 +33,9 @@ class BC:
     Attributes:
         policy (Policy): Our policy.
         epochs (int = 100): Number of epochs in the training process.
-        loss_fn (torch.nn.MSELoss): Mean Squared Error loss function.
-        optimizer (torch.optim.SGD): Stochastic Gradient Descent optimizer.
+        loss_fn (torch.nn.MSELoss): MSE loss used for non-trajectory based datasets.
+        optimizer (torch.optim.Optimizer): Optimizer to use. Either MSE loss or
+            Gaussian NLL loss.
         dataset (ExpertDataset): Replay buffer of expert trajectories.
         dataloader (torch.utils.data.Dataset): Custom data loader for the expert dataset.
         losses (list): List to store the loss at each iteration.
@@ -63,10 +64,8 @@ class BC:
         self.traj_dataset = traj_dataset
         self.probabilistic = getattr(policy, "probabilistic", False)
         self.sharpness_weight = 0.1
-        if self.probabilistic:
-            self.loss_fn = nn.GaussianNLLLoss()
-        else:
-            self.loss_fn = nn.MSELoss()
+        self.loss_fn = nn.MSELoss()
+
         if optimizer == "sgd":
             self.optimizer = optim.SGD(self.policy.parameters(), lr=lr)
         elif optimizer == "adam":
@@ -75,6 +74,7 @@ class BC:
             self.dataset = TrajectoryDataset(trajectories=D)
         else:
             self.dataset = ExpertDataset(data=D, mean=dataset_mean, std=dataset_std)
+
         self.dataloader = DataLoader(
             self.dataset,
             batch_size=batch_size,
@@ -118,9 +118,6 @@ class BC:
                 n_batches = 0
 
                 for batch, (returns, expert_actions) in enumerate(self.dataloader):
-                    # Full forward pass — no BPTT truncation so gradients
-                    # flow from late losses back to early GRU states,
-                    # allowing the network to learn to accumulate evidence.
                     self.optimizer.zero_grad()
                     B, T, _ = returns.shape
                     w = self._get_temporal_weights(T)  # (T,)
@@ -419,13 +416,13 @@ def compare_bc_to_fin_model(
     """
     if financial_policy_class in [
         MertonPolicy,
-        TimeDependentMertonPolicy,
-        TimeDependentNoisyMertonPolicy,
+        TrajectoryDependentMertonPolicy,
+        TrajectoryDependentNoisyMertonPolicy,
     ]:
         fin_model = create_merton_model(policy_class=financial_policy_class)
     elif financial_policy_class in [
         JumpDiffusionPolicy,
-        TimeDependentJumpDiffusionPolicy,
+        TrajectoryDependentJumpDiffusionPolicy,
     ]:
         fin_model = create_jump_diffusion_model(policy_class=financial_policy_class)
     expert_dataset = fin_model.generate_data(m=m, state_type=state_type)

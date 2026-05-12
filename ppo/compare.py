@@ -6,7 +6,7 @@ import torch
 
 from models.merton import create_merton_model
 from plotting.utils import plot_kde
-from policies.analytic import TimeDependentMertonPolicy
+from policies.analytic import TrajectoryDependentMertonPolicy
 from policies.learnable import NNPolicy
 from ppo.agent import PPO
 from utils.consts import PPOConfig
@@ -51,7 +51,7 @@ def compare_ppo_vs_il_ppo(
         ppo_pretrained.load_pretrained_actor(il_policy, il_mean, il_std)
         ppo_pretrained.train()
 
-    fin_model = create_merton_model(policy_class=TimeDependentMertonPolicy)
+    fin_model = create_merton_model(policy_class=TrajectoryDependentMertonPolicy)
     expert_util = fin_model.evaluate(
         policy=fin_model.expert_policy,
         m=config.eval_episodes,
@@ -159,9 +159,9 @@ def compare_ppo_vs_il_ppo(
         X_pre_f = X_pre[np.isfinite(X_pre)]
         all_wealth.append(X_pre_f)
     combined = np.concatenate(all_wealth)
-    lo, hi = np.percentile(combined, [1, 95])
+    lo, hi = np.percentile(combined, [1, 70])
     pad = 0.05 * (hi - lo)
-    xlim = (max(0, lo - pad), hi + pad)
+    xlim = (-1, hi + pad)
     plot_kde(ax, X_expert_f, color="#2d3436", label="Expert", xlim=xlim)
     plot_kde(
         ax,
@@ -186,6 +186,9 @@ def compare_ppo_vs_il_ppo(
     ax.set_title("Terminal Wealth Distribution")
     ax.legend(fontsize=8)
     ax.grid(True, linestyle=":", alpha=0.5)
+
+    for ax in axes:
+        ax.ticklabel_format(style="sci", axis="x", scilimits=(0, 0))
 
     fig.tight_layout()
     if savepath:
